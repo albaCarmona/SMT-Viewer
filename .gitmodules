@@ -1,0 +1,3 @@
+[submodule "SMT"]
+	path = SMT
+	url = https://github.com/antoniorv6/SMT.git
