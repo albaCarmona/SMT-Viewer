@@ -17,3 +17,5 @@ transformers
 visualizer
 datasets
 wandb
+pandas
+gradio
