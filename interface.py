@@ -143,7 +143,7 @@ def make_predictions(checkpoint, input_image, input_type:int):
 
 	CA_layers.append(overall)
 
-	return pd.DataFrame(predicted_seq)
+	return pd.DataFrame([predicted_seq])
 
 def define_input_source( choice:gr.SelectData ):
 	"""
@@ -159,8 +159,8 @@ def define_input_source( choice:gr.SelectData ):
 def define_interface():
 
 	# main components	
+	file_input = gr.File(label="Model Checkpoint File", visible=False, interactive=True)
 	image_input = gr.Image(label="Input Image")
-	file_input = gr.File(label="Model Checkpoint File", visible=False)
 	tabs = gr.Tabs()
 	
 	# knob components
@@ -175,10 +175,19 @@ def define_interface():
 									value = 10,
 									visible=False)
 
-	# output table
-	token_table = gr.DataFrame(interactive=False, visible=False)
+	token_table = gr.DataFrame(interactive=False, value=pd.DataFrame(["The predicted sequence will appear here"]))
+
+	def intensifier_visibility():
+		"""
+		Makes intensifier slider visible whenever token slider is changed
+		"""
+		return gr.update(visible=True)
 
 	with gr.Blocks() as page:
+
+		###
+		token_slider.release( fn=intensifier_visibility, outputs=intensifier_slider )
+		###
 
 		gr.Markdown("# SMT Demonstrator")
 
@@ -186,26 +195,41 @@ def define_interface():
 
 			with gr.Column():
 
-				select_src_weights = gr.Dropdown(["Test pretrained weights (default)", "Test your own weights"], 
-												label="Pick which weights to test out", 
-												interactive=True)
-
-				# State variable -- Weights source picked by user
-				input_type = gr.Number(value=0, visible=False)
-
-				select_src_weights.select( define_input_source, outputs=[file_input, input_type] )
-				
+				'''
 				model_interface = gr.Interface(make_predictions,
 									inputs=[file_input, image_input, input_type],
 									outputs=[token_table],
 									flagging_mode='never')
+				'''
 
+				# input area
+				with gr.Blocks():
+					select_src_weights = gr.Dropdown(["Test pretrained weights (default)", "Test your own weights"], 
+													label="Pick which weights to test out", 
+													interactive=True)
+
+					# State variable -- Weights source picked by user
+					input_type = gr.Number(value=0, visible=False)
+
+					select_src_weights.select( define_input_source, outputs=[file_input, input_type] )
+
+					file_input.render()
+					image_input.render()
+
+					with gr.Row():
+
+						def submit_logic(file, image, type):
+
+							return 	make_predictions(file, image, type), gr.update(visible=True), gr.update(visible=True)
+
+						clear_btn = gr.ClearButton( components=[file_input, image_input] )
+
+						submit_btn = gr.Button( value="Submit", variant="primary")
+						submit_btn.click( fn=submit_logic,
+										inputs=[file_input, image_input, input_type],
+										outputs=[token_table, token_slider, intensifier_slider] )
 
 			with gr.Column(scale=2):
-
-				token_table.change( ( lambda tokens : (gr.Slider(maximum=tokens.shape[0], visible=True), gr.Slider(visible=True)) ),
-					   				inputs=[token_table],
-									outputs=[token_slider, intensifier_slider] )
 
 				token_slider.render()
 
@@ -214,7 +238,7 @@ def define_interface():
 				
 				# genera las imagenes cada vez que se mueve el slider
 				@gr.render( inputs	=[token_table, token_slider, image_input, intensifier_slider, tab_selected],
-							triggers=[token_slider.release, intensifier_slider.release] )
+							triggers=[token_slider.release, intensifier_slider.release, token_table.change])
 				def render_images_display(prediction, slider, image, intensifier, tab_no):
 
 					if prediction.shape[0] > 0:
@@ -261,12 +285,20 @@ def define_interface():
 									tab_8.select( (lambda : gr.Number(7)), outputs=[tab_selected] )
 									gr.Image(value=images[7])
 
-							
-
-						#tabs.select(  )
-					return
-				
 				intensifier_slider.render()
+
+		with gr.Column():
+
+
+			gr.Markdown("## Predicted Sequence")
+
+			def render_prediction_display(tokens):
+				return gr.Slider(maximum=tokens.shape[0], visible=True), gr.update(visible=True)
+
+			token_table.render()
+			token_table.change(render_prediction_display, inputs=[token_table], outputs=[token_slider, token_table])
+
+
 
 	return page
 
@@ -274,10 +306,3 @@ if __name__=="__main__":
 	page = define_interface()
 	page.launch(share=False)
 
-'''
-with gr.Blocks() as demo: 
-	radio = gr.Radio([1, 2, 4], label="Set the value of the number") 
-	number = gr.Number(value=2, interactive=True) 
-	radio.change(fn=lambda value: gr.update(value=value), inputs=radio, outputs=number) 
-demo.launch()
-'''
