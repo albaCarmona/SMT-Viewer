@@ -93,8 +93,6 @@ def make_predictions(checkpoint, input_image, input_type:int):
 
 	global CA_layers
 
-	print(f"input type: {input_type}")
-
 	# take from huggingface
 	if input_type == 0:
 		# TODO this doesnt work because the HuggingFace weights aren't updated
@@ -113,11 +111,6 @@ def make_predictions(checkpoint, input_image, input_type:int):
 		input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
 		input_image = torch.from_numpy(input_image).to(device=model.pos2D.pe.device)
 
-
-	#input_image = np.mean(input_image, axis=2, keepdims=True) # 3 channels to one
-	#input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
-	#input_image = torch.from_numpy(input_image)#.to(device=model.positional_2D.pe.device)
-
 	input_image = input_image.to(torch.float32)
 
 	# width / height
@@ -127,10 +120,8 @@ def make_predictions(checkpoint, input_image, input_type:int):
 	#   extracted features is FLAT input_image shape divided by 16
 	predicted_seq, predictions = model.predict(input_image, return_weights=True)
 
-	print(f"predicted seq: {predicted_seq} \npredict len: {len(predictions.cross_attentions)} \nshape of first: {predictions.cross_attentions[0].shape}")
-
 	# seq_len | reduced_h * reduced_w
-	CA_layers = [ ca_layer.squeeze() for ca_layer in predictions.cross_attentions ]
+	CA_layers = [ ca_layer.mean(dim=1).squeeze() for ca_layer in predictions.cross_attentions ]
 	
 	seq_len = CA_layers[0].shape[0]
 	att_w = round(sqrt(CA_layers[0].shape[1] * aspect_ratio))
@@ -143,13 +134,12 @@ def make_predictions(checkpoint, input_image, input_type:int):
 	CA_layers = [ att.cpu().detach().numpy() for att in CA_layers ]
 	# ^^^ we store this, then generate the actual images to display ONLY whenever the token slider is moved
 
-	## overlay all of them as overall attention
-	overall = np.empty(CA_layers[0].shape)
-	for ca in CA_layers:
-		overall += ca
+	overall = np.stack(CA_layers).sum(axis=0)
 
 	## normalize
-	overall /= np.max(overall)
+	overall_max_value = np.max(overall)
+	if overall_max_value > 1.0:
+		overall /= np.max(overall)
 
 	CA_layers.append(overall)
 
@@ -179,9 +169,10 @@ def define_interface():
 							info="Select a predicted token to visualize the attention it pays in the input sample",
 							visible=False)
 
-	intensifier_slider = gr.Slider(minimum=1, maximum=10, step=1,
+	intensifier_slider = gr.Slider(minimum=1, maximum=100, step=1,
 									label="Intensify attention",
 									info="Use this slider to intensify the attention values to better see differences",
+									value = 10,
 									visible=False)
 
 	# output table
