@@ -1,5 +1,5 @@
 import sys
-sys.path.append('..')
+sys.path.insert(0, "./SMT")
 
 from smt_trainer import SMT_Trainer
 from smt_model.modeling_smt import SMTModelForCausalLM
@@ -100,14 +100,23 @@ def make_predictions(checkpoint, input_image, input_type:int):
 		# TODO this doesnt work because the HuggingFace weights aren't updated
 		model = SMTModelForCausalLM.from_pretrained("antoniorv6/smt-grandstaff")
 		model.to(device=model.positional_2D.pe.device)
+		input_image = np.mean(input_image, axis=2, keepdims=True) # 3 channels to one
+		input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
+		input_image = torch.from_numpy(input_image)#.to(device=model.positional_2D.pe.device)
+
 
 	# take from checkpoint variable
 	elif input_type == 1:
 		model = SMT_Trainer.load_from_checkpoint(checkpoint).model
+		model.to(device=model.pos2D.pe.device)
+		input_image = np.mean(input_image, axis=2, keepdims=True) # 3 channels to one
+		input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
+		input_image = torch.from_numpy(input_image).to(device=model.pos2D.pe.device)
 
-	input_image = np.mean(input_image, axis=2, keepdims=True) # 3 channels to one
-	input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
-	input_image = torch.from_numpy(input_image).to(device=model.positional_2D.pe.device)
+
+	#input_image = np.mean(input_image, axis=2, keepdims=True) # 3 channels to one
+	#input_image = np.transpose(input_image, (2,0,1))[None, :] # add batch size as well, [B, C, H, W]
+	#input_image = torch.from_numpy(input_image)#.to(device=model.positional_2D.pe.device)
 
 	input_image = input_image.to(torch.float32)
 
@@ -116,7 +125,9 @@ def make_predictions(checkpoint, input_image, input_type:int):
 
 	# 8 attention layers * [channels | seq_len | extracted_features]
 	#   extracted features is FLAT input_image shape divided by 16
-	predicted_seq, predictions = model.predict(input_image)
+	predicted_seq, predictions = model.predict(input_image, return_weights=True)
+
+	print(f"predicted seq: {predicted_seq} \npredict len: {len(predictions.cross_attentions)} \nshape of first: {predictions.cross_attentions[0].shape}")
 
 	# seq_len | reduced_h * reduced_w
 	CA_layers = [ ca_layer.squeeze() for ca_layer in predictions.cross_attentions ]
